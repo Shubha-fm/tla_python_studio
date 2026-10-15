@@ -151,7 +151,15 @@ def tla_to_python_from_string(src):
         for v, expr in updates.items():
             result.append(f'        updated[{v!r}] = {expr}')
         result.append('        successors.append(updated)')
-    result.extend(['    return successors', '', 'def explore(max_depth=5):',
+    # Preserve originating action names for trace evidence.
+    result.extend(['    return successors', '', 'def next_transitions(state):', '    transitions = []'])
+    for name, guards, updates in compiled:
+        cond = ' and '.join(f'({x})' for x in guards) or 'True'
+        result.extend([f'    if {cond}:', '        updated = dict(state)'])
+        for v, expr in updates.items():
+            result.append(f'        updated[{v!r}] = {expr}')
+        result.append(f'        transitions.append(({name!r}, updated))')
+    result.extend(['    return transitions', '', 'def explore(max_depth=5):',
                    '    frontier = [INITIAL_STATE]', '    seen = set()',
                    '    for depth in range(max_depth + 1):', '        upcoming = []',
                    '        for state in frontier:', '            key = tuple(sorted(state.items()))',
