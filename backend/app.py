@@ -3,6 +3,7 @@ from flask import Flask,request,jsonify,send_from_directory
 from flask_cors import CORS
 from tla_parser import tla_to_python_from_string,TranslationError
 from verification import verify
+from tlc_runner import tlc_status, run_tlc
 ROOT=os.path.dirname(os.path.abspath(__file__))
 FRONTEND=os.path.join(ROOT,'..','frontend','build')
 app=Flask(__name__,static_folder=FRONTEND,static_url_path='/')
@@ -23,6 +24,14 @@ def verification():
     if not isinstance(data,dict):return jsonify(ok=False,error='Provide a JSON object.'),400
     try:return jsonify(ok=True,**verify(data.get('code',''),data.get('property',''),data.get('max_depth',12),data.get('max_states',120)))
     except (TranslationError,ValueError,SyntaxError,TypeError) as e:return jsonify(ok=False,error=str(e)),422
+@app.get('/api/tlc/status')
+def tlc_availability():return jsonify(ok=True,**tlc_status())
+@app.post('/api/tlc/run')
+def tlc_run():
+    data=request.get_json(silent=True)
+    if not isinstance(data,dict):return jsonify(ok=False,error='Provide a JSON object.'),400
+    try:return jsonify(ok=True,**run_tlc(data.get('code',''),data.get('invariant','')))
+    except (TranslationError,ValueError) as e:return jsonify(ok=False,error=str(e)),422
 @app.get('/')
 def index():return send_from_directory(FRONTEND,'index.html')
 @app.get('/<path:path>')
