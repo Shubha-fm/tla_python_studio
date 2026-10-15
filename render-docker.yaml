@@ -1,0 +1,10 @@
+# Optional migration blueprint. Do NOT switch the currently working service automatically.
+services:
+  - type: web
+    name: tla-python-studio-docker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: TLC_EXECUTION_ENABLED
+        value: "0"
