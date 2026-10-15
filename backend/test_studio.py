@@ -30,6 +30,20 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(result['summary']['property_status'],'violation')
         self.assertTrue(result['counterexample'])
 
+    def test_unchanged_variable(self):
+        source = """---- MODULE Pair ----
+VARIABLES count, flag
+Init == /\\ count = 0
+        /\\ flag = TRUE
+Step == /\\ count < 2
+        /\\ count' = count + 1
+        /\\ UNCHANGED flag
+Next == Step
+===="""
+        result=verify(source,'flag = TRUE')
+        self.assertEqual(result['summary']['states'],3)
+        self.assertEqual(result['summary']['deadlocks'],1)
+
     def test_invalid_input(self):
         with self.assertRaises(TranslationError):
             tla_to_python_from_string('INVALID')
