@@ -8,8 +8,8 @@ from tla_parser import TranslationError
 
 def tlc_status():
     jar=os.environ.get('TLC_JAR','')
-    enabled=bool(jar and Path(jar).is_file())
-    return {'available':enabled,'reason':('TLC jar configured' if enabled else 'TLC_JAR is not configured; install Java and set TLC_JAR to an installed trusted tlc.jar')}
+    enabled=False  # Public execution disabled until an isolated worker is available
+    return {'available':enabled,'reason':('isolated TLC worker connected' if enabled else 'Public TLC execution is disabled: a separate sandboxed worker is required, even if Java and a TLC JAR are installed')}
 
 def run_tlc(source,invariant=''):
     status=tlc_status()
