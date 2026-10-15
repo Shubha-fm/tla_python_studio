@@ -15,7 +15,12 @@ def _expression(s, variables, next_state=False):
     s = s.strip()
     if not s:
         raise TranslationError('Empty expression')
-    tok = re.compile(r"\s*(?:(\d+)|([A-Za-z_]\w*'?)|(/=|<=|>=|=|[()+*<>-]))")
+    # A conservative tokenized expression subset; reject unknown TLA+ operators.
+    choice = re.fullmatch(r'IF\s+(.+?)\s+THEN\s+(.+?)\s+ELSE\s+(.+)', s, re.S)
+    if choice:
+        condition, yes, no = choice.groups()
+        return f"({_expression(yes, variables)} if {_expression(condition, variables)} else {_expression(no, variables)})"
+    tok = re.compile(r"\s*(?:\d+|[A-Za-z_]\w*'?|\\/|/\\|/=|<=|>=|==|[=()+*<>~%-])")
     tokens = []
     pos = 0
     while pos < len(s):
@@ -28,6 +33,10 @@ def _expression(s, variables, next_state=False):
         pos = match.end()
         if val in ('TRUE', 'FALSE'):
             tokens.append(val.title())
+        elif val in ('/\\', '\\/'):
+            tokens.append('and' if val == '/\\' else 'or')
+        elif val == '~':
+            tokens.append('not')
         elif val in ('=', '/='):
             tokens.append('==' if val == '=' else '!=')
         elif re.fullmatch(IDENT + "'", val):
@@ -48,7 +57,7 @@ def _expression(s, variables, next_state=False):
         raise TranslationError(f'Invalid expression: {s}') from exc
     allowed = (ast.Expression, ast.BoolOp, ast.BinOp, ast.UnaryOp, ast.Compare,
                ast.Load, ast.Subscript, ast.Name, ast.Constant, ast.And, ast.Or,
-               ast.Not, ast.Add, ast.Sub, ast.Mult, ast.Eq, ast.NotEq, ast.Lt,
+               ast.Not, ast.IfExp, ast.Add, ast.Sub, ast.Mult, ast.Mod, ast.Eq, ast.NotEq, ast.Lt,
                ast.LtE, ast.Gt, ast.GtE, ast.USub)
     if any(not isinstance(node, allowed) for node in ast.walk(tree)):
         raise TranslationError('Unsupported expression syntax')
