@@ -23,6 +23,7 @@ class StudioTests(unittest.TestCase):
         result=verify(SOURCE,'count >= 0')
         self.assertEqual(result['summary']['states'],4)
         self.assertEqual(result['summary']['transitions'],4)
+        self.assertTrue(all(edge.get('action') in ('Increment','Reset') for edge in result['edges']))
         self.assertEqual(result['summary']['property_status'],'pass_finite_graph')
 
     def test_counterexample(self):
