@@ -39,7 +39,8 @@ function layout(graph) {
    const inTrace=(graph.counterexample||[]).some((id,j,a)=>j<a.length-1&&id===e.source&&a[j+1]===e.target);
    const reverse=edges.some(x=>x.source===e.target&&x.target===e.source);
    const loop=e.source===e.target;
-   return {id:'transition-'+i,source:String(e.source),target:String(e.target),sourceHandle:loop?'bottom':'right',targetHandle:loop?'top':'left',type:'action',label:undefined,markerEnd:{type:MarkerType.ArrowClosed,color:inTrace?'#dd4863':'#6684ae',width:19,height:19},style:{stroke:inTrace?'#dd4863':'#6684ae',strokeWidth:inTrace?3:1.8},data:{action:e.action||'Next',inTrace,offset:(index-(pairs.get(k)-1)/2)*46+(reverse?15:0),verticalOffset:loop?-26:0,curvature:0.3+index*0.16}};
+   const backward=!loop&&Number(e.target)<Number(e.source);
+   return {id:'transition-'+i,source:String(e.source),target:String(e.target),sourceHandle:loop||backward?'bottom':'right',targetHandle:loop||backward?'top':'left',type:'action',label:undefined,markerEnd:{type:MarkerType.ArrowClosed,color:inTrace?'#dd4863':'#6684ae',width:19,height:19},style:{stroke:inTrace?'#dd4863':'#6684ae',strokeWidth:inTrace?3:1.8},data:{action:e.action||'Next',inTrace,offset:(index-(pairs.get(k)-1)/2)*46+(reverse?15:0),verticalOffset:loop?-26:backward?30:0,curvature:0.3+index*0.16}};
  });
  return {layoutNodes,layoutEdges};
 }
