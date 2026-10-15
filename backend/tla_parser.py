@@ -128,8 +128,16 @@ def tla_to_python_from_string(src):
                     raise TranslationError('Primed right-hand-side variables are unsupported.')
                 updates[var] = _expression(expression, vars_)
             else:
-                if 'UNCHANGED' in clause:
-                    raise TranslationError('UNCHANGED is not supported. Assign every variable.')
+                if clause.startswith('UNCHANGED '):
+                    names=clause[len('UNCHANGED '):].strip()
+                    if names.startswith('<<') and names.endswith('>>'):
+                        names=names[2:-2]
+                    names=[v.strip() for v in names.split(',')]
+                    if not names or any(v not in vars_ or v in updates for v in names):
+                        raise TranslationError('Invalid UNCHANGED variable list.')
+                    for v in names:
+                        updates[v]=f"state[{v!r}]"
+                    continue
                 guards.append(_expression(clause, vars_))
         if set(updates) != set(vars_):
             raise TranslationError(f'Action {name} must assign all variables.')
