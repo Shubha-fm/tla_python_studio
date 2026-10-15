@@ -1,5 +1,5 @@
 import React, {useMemo, useCallback} from 'react';
-import ReactFlow, {Background, Controls, MiniMap, Handle, Position, MarkerType, useNodesState, useEdgesState, getBezierPath, EdgeLabelRenderer} from '@xyflow/react';
+import {ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType, useNodesState, useEdgesState, getBezierPath, EdgeLabelRenderer} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import './StateGraph.css';
 
