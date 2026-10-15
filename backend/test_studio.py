@@ -45,6 +45,30 @@ Next == Step
         self.assertEqual(result['summary']['states'],3)
         self.assertEqual(result['summary']['deadlocks'],1)
 
+    def test_conditional_expression(self):
+        source = """---- MODULE Choice ----
+VARIABLE x
+Init == x = 0
+Toggle == /\\ x < 3
+          /\\ x' = IF x = 0 THEN 2 ELSE 0
+Next == Toggle
+===="""
+        graph = verify(source, 'x >= 0')
+        self.assertEqual(graph['summary']['states'], 2)
+        self.assertEqual(graph['summary']['transitions'], 2)
+
+    def test_boolean_expression(self):
+        source = """---- MODULE BoolOp ----
+VARIABLE x
+Init == x = 0
+Step == /\\ (x = 0 \\/ x = 1)
+        /\\ x' = (x + 1) % 3
+Next == Step
+===="""
+        graph = verify(source, '~(x < 0)')
+        self.assertEqual(graph['summary']['states'], 3)
+        self.assertEqual(graph['summary']['deadlocks'], 1)
+
     def test_invalid_input(self):
         with self.assertRaises(TranslationError):
             tla_to_python_from_string('INVALID')
