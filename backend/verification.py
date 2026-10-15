@@ -19,7 +19,7 @@ def verify(source,property_text='',max_depth=12,max_states=120):
     generated=tla_to_python_from_string(source)
     namespace={'__builtins__':{'dict':dict,'list':list}}
     exec(compile(generated.split('def explore(')[0],'<translated>','exec'),namespace)
-    initial=namespace['INITIAL_STATE']; next_states=namespace['next_states']
+    initial=namespace['INITIAL_STATE']; next_states=namespace['next_states']; next_transitions=namespace['next_transitions']
     variables=_get_vars(source);prop=property_text.strip()
     compiled=_expression(prop,variables) if prop else None
     nodes=[{'id':0,'state':initial,'depth':0}];edges=[]
@@ -30,13 +30,13 @@ def verify(source,property_text='',max_depth=12,max_states=120):
         id=queue.popleft();node=nodes[id];state=node['state']
         if compiled is not None and not bool(safe_eval(compiled,state)):
             violations.append(id)
-        successors=next_states(state)
+        successors=next_transitions(state)
         if node['depth']>=max_depth:
             if successors:cutoff=True
             else:deadlocks.append(id)
             continue
         if not successors:deadlocks.append(id)
-        for successor in successors:
+        for action,successor in successors:
             ident=key(successor)
             if ident not in visited:
                 if len(nodes)>=max_states:
@@ -45,7 +45,7 @@ def verify(source,property_text='',max_depth=12,max_states=120):
                 nodes.append({'id':target,'state':successor,'depth':node['depth']+1})
                 queue.append(target)
             else:target=visited[ident]
-            edges.append({'source':id,'target':target})
+            edges.append({'source':id,'target':target,'action':action})
     def trace(id):
         route=[]
         while id is not None:
