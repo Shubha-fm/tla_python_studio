@@ -1,54 +1,123 @@
-"""Bounded explicit-state exploration. Not TLC or an unbounded proof."""
-import ast
+"""Bounded breadth-first exploration for the documented restricted TLA+ fragment."""
+from __future__ import annotations
+
 from collections import deque
-from tla_parser import tla_to_python_from_string, _expression, _get_vars, TranslationError
 
-ALLOWED=(ast.Expression,ast.BoolOp,ast.BinOp,ast.UnaryOp,ast.Compare,ast.Load,ast.Name,ast.Subscript,ast.Constant,ast.And,ast.Or,ast.Not,ast.Add,ast.Sub,ast.Mult,ast.Eq,ast.NotEq,ast.Lt,ast.LtE,ast.Gt,ast.GtE,ast.USub)
+from tla_parser import (
+    TranslationError,
+    canonical_state_key,
+    evaluate_expression,
+    expression_type,
+    parse_expression,
+    parse_tla,
+    successors,
+)
 
-def safe_eval(expr,state):
-    tree=ast.parse(expr,mode='eval')
-    if any(not isinstance(node,ALLOWED) for node in ast.walk(tree)):
-        raise TranslationError('Unsupported property expression')
-    return eval(compile(tree,'<property>','eval'),{'__builtins__':{}},{'state':state})
 
-def verify(source,property_text='',max_depth=12,max_states=120):
-    if type(max_depth)!=int or not 0<=max_depth<=40:
-        raise TranslationError('max_depth must be 0–40.')
-    if type(max_states)!=int or not 1<=max_states<=500:
-        raise TranslationError('max_states must be 1–500.')
-    generated=tla_to_python_from_string(source)
-    namespace={'__builtins__':{'dict':dict,'list':list}}
-    exec(compile(generated.split('def explore(')[0],'<translated>','exec'),namespace)
-    initial=namespace['INITIAL_STATE']; next_states=namespace['next_states']; next_transitions=namespace['next_transitions']
-    variables=_get_vars(source);prop=property_text.strip()
-    compiled=_expression(prop,variables) if prop else None
-    nodes=[{'id':0,'state':initial,'depth':0}];edges=[]
-    key=lambda s:tuple((v,s[v]) for v in variables)
-    visited={key(initial):0};parent={0:None};queue=deque([0])
-    cutoff=False;violations=[];deadlocks=[]
+ENGINE_NAME = "typed_ir_breadth_first_explicit_state_explorer"
+
+
+def _check_limits(max_depth: int, max_states: int) -> None:
+    if type(max_depth) is not int or not 0 <= max_depth <= 40:
+        raise TranslationError("max_depth must be an integer from 0 to 40.")
+    if type(max_states) is not int or not 1 <= max_states <= 500:
+        raise TranslationError("max_states must be an integer from 1 to 500.")
+
+
+def verify(source: str, property_text: str = "", max_depth: int = 12, max_states: int = 120) -> dict:
+    """Explore a typed model IR without executing the generated Python rendering.
+
+    A finite pass means that the reachable graph of this restricted model was
+    exhausted before a cutoff. A bounded pass means that a configured depth or
+    state limit stopped the breadth-first search.
+    """
+    _check_limits(max_depth, max_states)
+    model = parse_tla(source)
+    property_source = property_text.strip()
+    property_expression = parse_expression(property_source, model.variable_types) if property_source else None
+    if property_expression is not None:
+        # parse_expression has type-checked the tree. This explicit check makes
+        # the contract local to the verifier as well.
+        if expression_type(property_expression, model.variable_types) != "bool":
+            raise TranslationError("The property must be a Boolean state predicate.")
+
+    initial = dict(model.initial_state)
+    nodes = [{"id": 0, "state": initial, "depth": 0}]
+    edges: list[dict] = []
+    visited = {canonical_state_key(model, initial): 0}
+    parent: dict[int, int | None] = {0: None}
+    queue = deque([0])
+    cutoff = False
+    violations: list[int] = []
+    deadlocks: list[int] = []
+
     while queue:
-        id=queue.popleft();node=nodes[id];state=node['state']
-        if compiled is not None and not bool(safe_eval(compiled,state)):
-            violations.append(id)
-        successors=next_transitions(state)
-        if node['depth']>=max_depth:
-            if successors:cutoff=True
-            else:deadlocks.append(id)
+        node_id = queue.popleft()
+        node = nodes[node_id]
+        state = node["state"]
+        if property_expression is not None and not evaluate_expression(property_expression, state):
+            violations.append(node_id)
+
+        outgoing = successors(model, state)
+        if node["depth"] >= max_depth:
+            if outgoing:
+                cutoff = True
+            else:
+                deadlocks.append(node_id)
             continue
-        if not successors:deadlocks.append(id)
-        for action,successor in successors:
-            ident=key(successor)
-            if ident not in visited:
-                if len(nodes)>=max_states:
-                    cutoff=True;continue
-                target=len(nodes);visited[ident]=target;parent[target]=id
-                nodes.append({'id':target,'state':successor,'depth':node['depth']+1})
-                queue.append(target)
-            else:target=visited[ident]
-            edges.append({'source':id,'target':target,'action':action})
-    def trace(id):
-        route=[]
-        while id is not None:
-            route.append(id);id=parent[id]
+        if not outgoing:
+            deadlocks.append(node_id)
+
+        for action_name, successor in outgoing:
+            identity = canonical_state_key(model, successor)
+            if identity not in visited:
+                if len(nodes) >= max_states:
+                    cutoff = True
+                    continue
+                target_id = len(nodes)
+                visited[identity] = target_id
+                parent[target_id] = node_id
+                nodes.append({"id": target_id, "state": successor, "depth": node["depth"] + 1})
+                queue.append(target_id)
+            else:
+                target_id = visited[identity]
+            edges.append({"source": node_id, "target": target_id, "action": action_name})
+
+    def trace(target_id: int) -> list[int]:
+        route: list[int] = []
+        current: int | None = target_id
+        while current is not None:
+            route.append(current)
+            current = parent[current]
         return list(reversed(route))
-    return {'nodes':nodes,'edges':edges,'summary':{'states':len(nodes),'transitions':len(edges),'max_depth':max_depth,'max_states':max_states,'truncated':cutoff,'deadlocks':len(deadlocks),'property':prop,'property_status':('not_checked' if not prop else 'violation' if violations else 'bounded_pass' if cutoff else 'pass_finite_graph')},'counterexample':trace(violations[0]) if violations else [],'deadlock_trace':trace(deadlocks[0]) if deadlocks else [],'disclaimer':'Bounded exploration of a restricted TLA+ subset, not TLC. A bounded pass is not a general proof.'}
+
+    property_status = (
+        "not_checked"
+        if not property_source
+        else "violation"
+        if violations
+        else "bounded_pass"
+        if cutoff
+        else "pass_finite_graph"
+    )
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "summary": {
+            "engine": ENGINE_NAME,
+            "states": len(nodes),
+            "transitions": len(edges),
+            "max_depth": max_depth,
+            "max_states": max_states,
+            "truncated": cutoff,
+            "deadlocks": len(deadlocks),
+            "property": property_source,
+            "property_status": property_status,
+        },
+        "counterexample": trace(violations[0]) if violations else [],
+        "deadlock_trace": trace(deadlocks[0]) if deadlocks else [],
+        "disclaimer": (
+            "Breadth-first explicit-state exploration of a typed restricted TLA+ fragment. "
+            "It is not TLC, SAT/SMT bounded model checking, temporal verification, or a refinement proof."
+        ),
+    }
