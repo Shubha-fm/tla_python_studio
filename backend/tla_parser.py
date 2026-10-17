@@ -22,6 +22,186 @@ Value: TypeAlias = int | bool
 TypeName: TypeAlias = str  # Exactly "int" or "bool" in a validated model.
 
 
+# This is a language contract, not a claim about the full TLA+ language.  It is
+# returned in evidence bundles so that a reader can connect each accepted
+# source form with its AST/IR representation and emitted Python shape.
+SYNTAX_CONTRACT_ID = "restricted_tla_to_python_v1"
+_RESERVED_IDENTIFIERS = frozenset(
+    {
+        "IF",
+        "THEN",
+        "ELSE",
+        "TRUE",
+        "FALSE",
+        "UNCHANGED",
+        "VARIABLE",
+        "VARIABLES",
+        "EXTENDS",
+        "Init",
+        "Next",
+    }
+)
+_SYNTAX_FORMS: tuple[dict[str, str], ...] = (
+    {
+        "source": "\\* line comment",
+        "parser": "definition collection removes text from \\* to end of line",
+        "ir": "no node",
+        "python": "no emitted text",
+    },
+    {
+        "source": "---- MODULE Name ----, EXTENDS Name, ====",
+        "parser": "top-level framing is recognised and ignored",
+        "ir": "no imported-module semantics",
+        "python": "no emitted text",
+    },
+    {
+        "source": "VARIABLE x | VARIABLES x, y",
+        "parser": "_get_vars records unique non-reserved scalar names",
+        "ir": "ModelIR.variables",
+        "python": "INITIAL_STATE keys and state['name'] reads",
+    },
+    {
+        "source": "Name == body",
+        "parser": "_blocks collects one named top-level definition",
+        "ir": "Init, selected ActionIR, or Next reference",
+        "python": "Init/action/Next-specific lowering",
+    },
+    {
+        "source": "Init == x = Integer | TRUE | FALSE (/\\ ...)*",
+        "parser": "one literal assignment is required for every variable",
+        "ir": "ModelIR.initial_state and variable_types",
+        "python": "INITIAL_STATE = {'x': value, ...}",
+    },
+    {
+        "source": "Action == Clause (/\\ Clause)*",
+        "parser": "_split_action_clauses separates only top-level conjunctions",
+        "ir": "ActionIR(name, guards, updates)",
+        "python": "one labelled if block in next_transitions",
+    },
+    {
+        "source": "Boolean guard Expr",
+        "parser": "recursive-descent expression parser plus Boolean type check",
+        "ir": "ActionIR.guards containing typed ASTs",
+        "python": "if (<rendered guard>):",
+    },
+    {
+        "source": "x' = Expr",
+        "parser": "primed name is legal only on an action-assignment left side",
+        "ir": "ActionIR.updates['x'] = typed AST",
+        "python": "updated['x'] = <rendered expression>",
+    },
+    {
+        "source": "UNCHANGED x | UNCHANGED x, y | UNCHANGED <<x, y>>",
+        "parser": "expands each named variable to an old-state read",
+        "ir": "VariableExpr for every preserved variable",
+        "python": "updated['x'] = state['x']",
+    },
+    {
+        "source": "Next == Action | Action \\/ Action ...",
+        "parser": "_parse_next accepts unique defined action names only",
+        "ir": "ModelIR.next_actions in source order",
+        "python": "ordered action blocks append labelled transitions",
+    },
+    {
+        "source": "Integer",
+        "parser": "integer token and LiteralExpr(int)",
+        "ir": "LiteralExpr",
+        "python": "decimal integer literal",
+    },
+    {
+        "source": "TRUE | FALSE",
+        "parser": "keyword token and LiteralExpr(bool)",
+        "ir": "LiteralExpr",
+        "python": "True | False",
+    },
+    {
+        "source": "Name in an expression",
+        "parser": "name token resolved through the declared-variable table",
+        "ir": "VariableExpr(name)",
+        "python": "state['name']",
+    },
+    {
+        "source": "( Expr )",
+        "parser": "recursive call between matched parentheses",
+        "ir": "the enclosed AST; grouping changes tree shape",
+        "python": "renderer parenthesises compound expressions",
+    },
+    {
+        "source": "- Expr",
+        "parser": "_parse_unary builds UnaryExpr('-')",
+        "ir": "UnaryExpr",
+        "python": "(-<expression>)",
+    },
+    {
+        "source": "~ Expr",
+        "parser": "_parse_unary builds UnaryExpr('~')",
+        "ir": "UnaryExpr",
+        "python": "(not <expression>)",
+    },
+    {
+        "source": "left + right | left - right | left * right | left % right",
+        "parser": "left-associative additive or multiplicative precedence level",
+        "ir": "BinaryExpr with integer operands",
+        "python": "same Python arithmetic operator",
+    },
+    {
+        "source": "left = right | left /= right",
+        "parser": "one comparison is accepted after an additive expression",
+        "ir": "BinaryExpr with equal operand types",
+        "python": "== | !=",
+    },
+    {
+        "source": "left < right | <= | > | >= right",
+        "parser": "one comparison is accepted after an additive expression",
+        "ir": "BinaryExpr with integer operands",
+        "python": "same Python comparison operator",
+    },
+    {
+        "source": "left /\\ right",
+        "parser": "_parse_and folds left-associatively",
+        "ir": "BinaryExpr('/\\') with Boolean operands",
+        "python": "(<left> and <right>)",
+    },
+    {
+        "source": "left \\/ right",
+        "parser": "_parse_or folds left-associatively",
+        "ir": "BinaryExpr('\\/') with Boolean operands",
+        "python": "(<left> or <right>)",
+    },
+    {
+        "source": "IF condition THEN yes ELSE no",
+        "parser": "_parse_if creates IfExpr; branches recurse",
+        "ir": "IfExpr with Boolean condition and equal branch types",
+        "python": "(<yes> if <condition> else <no>)",
+    },
+)
+_UNSUPPORTED_SYNTAX: tuple[dict[str, str], ...] = (
+    {"source_family": "sets and set constructors", "reason": "no set value, AST node, or evaluator rule"},
+    {"source_family": "quantifiers and CHOOSE", "reason": "no binder or finite-domain rule"},
+    {"source_family": "functions, records, tuples, sequences, and EXCEPT", "reason": "only scalar int/bool values are represented"},
+    {"source_family": "user-defined expression operators and recursion", "reason": "definitions are not expression-callable"},
+    {"source_family": "temporal operators, fairness, and liveness", "reason": "the explorer evaluates reached-state predicates only"},
+    {"source_family": "ACTION/temporal stuttering forms and ENABLED", "reason": "not part of the action grammar"},
+    {"source_family": "module instantiation and imported semantics", "reason": "EXTENDS is framing only in this fragment"},
+)
+
+
+def syntax_contract() -> dict[str, object]:
+    """Return the complete accepted-form map for this restricted compiler.
+
+    The returned data is deliberately serialisable and has no executable
+    Python.  It is intended for the manuscript, API-adjacent tooling, and
+    deterministic evidence bundles, where it prevents a reader from treating
+    this implementation as a parser for the full TLA+ language.
+    """
+    return {
+        "id": SYNTAX_CONTRACT_ID,
+        "scope": "Every accepted source form is listed; forms outside this map are not supported.",
+        "accepted_forms": [dict(form) for form in _SYNTAX_FORMS],
+        "unsupported_families": [dict(family) for family in _UNSUPPORTED_SYNTAX],
+    }
+
+
 @dataclass(frozen=True)
 class LiteralExpr:
     value: Value
@@ -438,6 +618,9 @@ def _get_vars(source: str) -> list[str]:
     variables = [name.strip() for name in declarations[0].split(",")]
     if not variables or any(not re.fullmatch(IDENT, name) for name in variables):
         raise TranslationError("Expected comma-separated variable names in VARIABLES.")
+    reserved = sorted(name for name in variables if name in _RESERVED_IDENTIFIERS)
+    if reserved:
+        raise TranslationError(f"Variable names cannot use reserved words: {', '.join(reserved)}.")
     if len(set(variables)) != len(variables):
         raise TranslationError("Variable names must be unique.")
     return variables
@@ -455,6 +638,8 @@ def _blocks(source: str) -> dict[str, str]:
         match = re.match(rf"^({IDENT})\s*==\s*(.*)$", line)
         if match is not None:
             current = match.group(1)
+            if current in _RESERVED_IDENTIFIERS and current not in {"Init", "Next"}:
+                raise TranslationError(f"Operator name cannot use reserved word: {current}.")
             if current in definitions:
                 raise TranslationError(f"Duplicate operator definition: {current}")
             definitions[current] = match.group(2)
@@ -537,7 +722,7 @@ def _parse_next(text: str, definitions: Mapping[str, str]) -> tuple[str, ...]:
     names = [part.strip() for part in re.split(r"\s*\\/\s*", text.strip())]
     if not names or any(not re.fullmatch(IDENT, name) for name in names):
         raise TranslationError("Next must be one action name or a disjunction of action names.")
-    if any(name in {"Init", "Next"} or name not in definitions for name in names):
+    if any(name in _RESERVED_IDENTIFIERS or name not in definitions for name in names):
         raise TranslationError("Next must name defined actions only.")
     if len(set(names)) != len(names):
         raise TranslationError("Next must not repeat an action name.")
