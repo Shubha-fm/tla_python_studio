@@ -3,3 +3,16 @@ frontend/build/
 __pycache__/
 *.pyc
 .env
+
+# Keep manuscript and submission artefacts outside the software repository.
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.synctex.gz
+*.tex
+*.zip
