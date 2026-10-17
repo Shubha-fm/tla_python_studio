@@ -1,10 +1,14 @@
-# TLA+--Python Studio
+# TLA+ to Python Studio
 
 A research prototype with a compiler-first design for a deliberately
 restricted TLA+ state-machine fragment. The compiler creates a typed AST and
 model IR, renders readable Python for inspection, and feeds the IR to a
 bounded explicit-state explorer. The verifier does not execute generated
 Python from a user-provided specification.
+
+This repository contains the software source and its technical documentation
+only. Manuscript sources, LaTeX build files, PDFs, and submission archives are
+intentionally excluded.
 
 ## Compiler and tool capabilities
 
