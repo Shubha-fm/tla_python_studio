@@ -1,4 +1,4 @@
-name: Validate studio
+name: Validate compiler and studio
 on:
   push:
     branches: [main]
@@ -13,6 +13,8 @@ jobs:
           python-version: '3.11'
       - run: pip install -r backend/requirements.txt
       - run: cd backend && python -m unittest discover -v
+      - run: cd backend && python evidence/run_comprehensive_evidence.py
+      - run: cd backend && python evidence/run_performance_benchmark.py
   frontend:
     runs-on: ubuntu-latest
     steps:
