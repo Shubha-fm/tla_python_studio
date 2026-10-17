@@ -45,6 +45,7 @@ from tla_parser import (  # noqa: E402
     model_to_tree,
     parse_tla,
     successors,
+    syntax_contract,
     tla_to_python_from_string,
     tokenize_expression,
 )
@@ -331,17 +332,26 @@ def main() -> None:
             "unexpected lexer token stream",
         ))(tokenize_expression("count + 10 <= 20 /\\ ~(count = 1)")),
     )
-    suite.add(
-        "compiler_pipeline",
-        "parse_tree_serialises_actions_and_types",
-        lambda: (lambda tree: require(
+    def parse_tree_and_syntax_contract() -> dict:
+        tree = model_to_tree(parse_tla(counter_source(2, "Tree")))
+        contract = syntax_contract()
+        require(
             tree["kind"] == "model"
             and tree["variables"] == [{"name": "count", "type": "int", "initial": 0}]
             and tree["next_actions"] == ["Increment", "Reset"]
             and tree["actions"][0]["updates"]["count"]["kind"] == "binary",
             "unexpected serialised compiler tree",
-        ))(model_to_tree(parse_tla(counter_source(2, "Tree")))),
-    )
+        )
+        require(
+            contract["id"] == "restricted_tla_to_python_v1"
+            and len(contract["accepted_forms"]) == 22
+            and any(form["source"] == "IF condition THEN yes ELSE no" for form in contract["accepted_forms"])
+            and any(family["source_family"] == "temporal operators, fairness, and liveness" for family in contract["unsupported_families"]),
+            "unexpected syntax contract",
+        )
+        return {"tree_kind": tree["kind"], "accepted_syntax_forms": len(contract["accepted_forms"])}
+
+    suite.add("compiler_pipeline", "parse_tree_and_complete_syntax_contract", parse_tree_and_syntax_contract)
     suite.add(
         "compiler_pipeline",
         "compile_artifact_links_source_ir_and_target",
@@ -455,11 +465,13 @@ Next == /\ x' = x + 1
         with zipfile.ZipFile(io.BytesIO(report)) as archive:
             names = archive.namelist()
             manifest = json.loads(archive.read("run_manifest.json"))
-        expected_names = ["README.md", "compiler_ir.json", "generated_model.py", "model.tla", "run_manifest.json", "states.csv", "transitions.csv", "verification.json"]
+            syntax_map = json.loads(archive.read("syntax_mapping.json"))
+        expected_names = ["README.md", "compiler_ir.json", "generated_model.py", "model.tla", "run_manifest.json", "states.csv", "syntax_mapping.json", "transitions.csv", "verification.json"]
         require(names == expected_names, f"unexpected ZIP entries: {names}")
         require(manifest["complete"] is True and manifest["engine"] == ENGINE_NAME and manifest["semantic_contract"] == "typed_restricted_tla_ast_ir_v2", "missing report provenance")
         require(manifest["generated_python_execution"] == "not used by the verifier", "missing execution boundary")
-        return {"archive_entries": names, "report_sha256": digest(report)}
+        require(syntax_map["id"] == "restricted_tla_to_python_v1" and len(syntax_map["accepted_forms"]) == 22, "missing complete syntax map")
+        return {"archive_entries": names, "report_sha256": digest(report), "accepted_syntax_forms": len(syntax_map["accepted_forms"])}
 
     suite.add("evidence_export", "report_contents_and_manifest", report_contents)
     suite.add("evidence_export", "deterministic_report_bytes", lambda: require(make_report(counter_source(3, "Report"), "count >= 0", 40, 500) == make_report(counter_source(3, "Report"), "count >= 0", 40, 500), "reports differ"))
@@ -515,4 +527,3 @@ Next == /\ x' = x + 1
 
 if __name__ == "__main__":
     main()
-

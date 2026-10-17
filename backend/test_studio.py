@@ -8,6 +8,7 @@ from tla_parser import (
     model_to_tree,
     parse_tla,
     successors,
+    syntax_contract,
     tla_to_python_from_string,
     tokenize_expression,
 )
@@ -85,6 +86,8 @@ Next == Step
     def test_invalid_input(self):
         with self.assertRaises(TranslationError):
             tla_to_python_from_string("INVALID")
+        with self.assertRaises(TranslationError):
+            parse_tla("---- MODULE Reserved ----\nVARIABLE TRUE\nInit == TRUE = TRUE\nStep == TRUE' = TRUE\nNext == Step\n====")
 
     def test_nested_boolean_condition_builds_typed_ir(self):
         source = r"""---- MODULE Nested ----
@@ -133,6 +136,13 @@ Next == Step
         self.assertEqual([token["text"] for token in tokens], ["count", "+", "10", "<=", "20", "/\\", "~", "(", "count", "=", "1", ")"])
         self.assertEqual(tokens[0]["column"], 1)
         self.assertEqual(tokens[5]["kind"], "operator")
+        contract = syntax_contract()
+        self.assertEqual(contract["id"], "restricted_tla_to_python_v1")
+        self.assertEqual(len(contract["accepted_forms"]), 22)
+        self.assertIn(
+            {"source": "IF condition THEN yes ELSE no", "parser": "_parse_if creates IfExpr; branches recurse", "ir": "IfExpr with Boolean condition and equal branch types", "python": "(<yes> if <condition> else <no>)"},
+            contract["accepted_forms"],
+        )
 
     def test_compiler_result_links_source_ir_and_readable_target(self):
         compilation = compile_tla(SOURCE)

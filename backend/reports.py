@@ -8,7 +8,7 @@ import json
 import platform
 import zipfile
 
-from tla_parser import compile_tla, model_to_tree
+from tla_parser import compile_tla, model_to_tree, syntax_contract
 from verification import verify
 
 
@@ -43,7 +43,7 @@ def make_report(source: str, property_text: str = "", max_depth: int = 12, max_s
     memo = io.StringIO()
     memo.write("# Compiler and verification evidence\n\n")
     memo.write("This run uses a typed restricted-TLA+ compiler and IR explorer, not TLC.\n\n")
-    memo.write("`compiler_ir.json` is the checked parse/IR tree. `generated_model.py` is an inspection artefact; the verifier does not execute it.\n\n")
+    memo.write("`compiler_ir.json` is the checked parse/IR tree. `syntax_mapping.json` lists every accepted source form and its Python lowering. `generated_model.py` is an inspection artefact; the verifier does not execute it.\n\n")
     memo.write(f"Model SHA-256: {source_sha}\n\n")
     for key, value in graph["summary"].items():
         memo.write(f"- {key}: {value}\n")
@@ -67,6 +67,7 @@ def make_report(source: str, property_text: str = "", max_depth: int = 12, max_s
     files = {
         "README.md": memo.getvalue(),
         "compiler_ir.json": json.dumps(model_to_tree(compilation.model), indent=2, sort_keys=True),
+        "syntax_mapping.json": json.dumps(syntax_contract(), indent=2, sort_keys=True),
         "generated_model.py": compilation.python,
         "model.tla": source,
         "run_manifest.json": json.dumps(settings, indent=2, sort_keys=True),
