@@ -20,6 +20,9 @@ Python from a user-provided specification.
   deadlock detection.
 - Deterministic evidence ZIPs that include model text, compiler_ir.json,
   generated Python, graph files, verdict, and run metadata.
+- A versioned 22-form parser contract: `syntax_contract()` reports the accepted
+  source forms and explicit unsupported full-language families. Each deterministic
+  evidence ZIP also contains `syntax_mapping.json`.
 
 **Important scope:** this is not a complete TLA+ interpreter, TLC integration,
 temporal/fairness checker, semantic-preservation proof, or scalability claim.
@@ -51,7 +54,8 @@ families. Its output is a local descriptive measurement, not a comparison
 with TLC or another tool.
 
 The design and source-language boundary are documented in
-[docs/COMPILER_DESIGN.md](docs/COMPILER_DESIGN.md).
+[docs/COMPILER_DESIGN.md](docs/COMPILER_DESIGN.md), with the source-form-to-AST-to-Python
+contract in [docs/PARSER_SYNTAX_MAPPING.md](docs/PARSER_SYNTAX_MAPPING.md).
 
 ## Optional TLC integration
 The optional `POST /api/tlc/run` endpoint is disabled until the server administrator installs Java and an official trusted TLC JAR, then sets `TLC_JAR` to its absolute path. `GET /api/tlc/status` reports availability. TLC requires a module named `Model` with `Init` and `Next`, and optionally a defined named invariant. TLC runs with a 25-second timeout, 256 MB JVM heap and one worker. **Do not expose the TLC endpoint to untrusted public users without container isolation, authentication and rate limits.** The existing Render Python runtime does not automatically contain Java or a TLC JAR.
